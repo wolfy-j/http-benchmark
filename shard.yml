@@ -19,11 +19,13 @@ dependencies:
   admiral:
     github: jwaldrip/admiral.cr
     version: ~> 1.8.0
-  redis:
-    github: stefanwille/crystal-redis
-    version: ~> 2.2.1
+  sqlite3:
+    github: crystal-lang/crystal-sqlite3
+    version: ~> 0.12.0
 
 targets:
+  db:
+    main: tools/src/db.cr
   neph:
     main: lib/neph/src/bin/neph_bin.cr
   benchmarker:
