@@ -157,6 +157,11 @@ jobs:
     script: bash .ci/test.sh
     language: crystal
     env: FRAMEWORK=drogon
+    services: docker
+  - stage: test
+    script: bash .ci/test.sh
+    language: crystal
+    env: FRAMEWORK=drogon
     services:
     - docker
     - redis
