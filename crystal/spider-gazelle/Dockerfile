@@ -5,7 +5,7 @@ WORKDIR /usr/src/app
 COPY shard.yml ./
 COPY src src
 
-RUN shards build --production --release --no-debug --static
+RUN shards build --production --release --no-debug
 RUN mv bin/server /usr/bin/app
 
 FROM alpine
