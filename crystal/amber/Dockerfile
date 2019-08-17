@@ -1,4 +1,4 @@
-FROM crystallang/crystal:0.30.1
+FROM crystallang/crystal:0.30.1 AS buildenv
 
 WORKDIR /usr/src/app
 
@@ -6,6 +6,9 @@ COPY shard.yml ./
 COPY src src
 COPY config config
 
-RUN shards build --release --no-debug
+RUN shards build --production --release --no-debug --static
+RUN mv bin/server /usr/bin/app
 
-CMD bin/server
+FROM alpine
+COPY --from=buildenv /usr/bin/app /usr/bin/app
+CMD /usr/bin/app

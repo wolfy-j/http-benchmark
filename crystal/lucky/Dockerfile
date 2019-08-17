@@ -1,4 +1,4 @@
-FROM crystallang/crystal:0.30.1
+FROM crystallang/crystal:0.30.1 AS buildenv
 
 WORKDIR /usr/src/app
 
@@ -16,8 +16,11 @@ RUN echo '{}'  > public/mix-manifest.json
 
 RUN shards build --release --no-debug
 
+RUN shards build --production --release --no-debug --static
+RUN mv bin/server /usr/bin/app
+
 ENV LUCKY_ENV production
 
-EXPOSE 3000
-
-CMD bin/server
+FROM alpine
+COPY --from=buildenv /usr/bin/app /usr/bin/app
+CMD /usr/bin/app
