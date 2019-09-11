@@ -1,97 +1,91 @@
-require "json"
-require "http/client"
-require "option_parser"
+require "admiral"
+require "pg"
 
-PIPELINE_GET  = File.expand_path("../../" + "pipeline.lua", __FILE__)
-PIPELINE_POST = File.expand_path("../../" + "pipeline_post.lua", __FILE__)
+PIPELINES = {
+  "GET":  File.expand_path("../../" + "pipeline.lua", __FILE__),
+  "POST": File.expand_path("../../" + "pipeline_post.lua", __FILE__),
+}
 
-class Client
-  def initialize
-    @threads = 16
-    @duration = 15
-    @url = ""
-    @method = "GET"
-    @connections = 1000.0
-    @init = false
-
-    OptionParser.parse! do |parser|
-      parser.banner = "Usage: time ./bin/benchmark [options]"
-      parser.on("-t THREADS", "--threads THREADS", "# of threads") do |threads|
-        @threads = threads.to_i
-      end
-      parser.on("-c CONNECTIONS", "--connections CONNECTIONS", "# of opened connections") do |connections|
-        @connections = connections.to_f
-      end
-      parser.on("-d DURATION", "--duration DURATION", "Time to test, in seconds") do |duration|
-        @duration = duration.to_i
-      end
-      parser.on("-u URL", "--url URL", "URL to call") do |url|
-        @url = url
-      end
-      parser.on("-m METHOD", "--method METHOD", "HTTP method to use") do |method|
-        @method = method
-      end
-      parser.on("-i", "--init", "Initialize (create json with 0 values)") do |x|
-        @init = true
-      end
+def insert(db, framework_id, metric, value)
+  DB.open("postgresql://postgres@localhost/benchmark") do |db|
+    row = db.exec "insert into keys (label) values ($1) on conflict do nothing", [metric]
+    metric_id = row.last_insert_id
+    # FIXME add method table to link metric
+    if metric_id == 0
+      metric_id = db.query_one("select id from keys where label = '#{metric}' limit 1", &.read(Int))
     end
-  end
-
-  def run
-    if @method == "POST"
-      command = "wrk -H 'Connection: keep-alive' --latency -d #{@duration}s -s #{PIPELINE_POST} -c #{@connections.to_i} --timeout 8 -t #{@threads} #{@url}"
-    else
-      command = "wrk -H 'Connection: keep-alive' --latency -d #{@duration}s -s #{PIPELINE_GET} -c #{@connections.to_i} --timeout 8 -t #{@threads} #{@url}"
+    # FIXME returning not working
+    row = db.exec "insert into values (key_id, value) values ($1,$2) returning id", [metric_id, value]
+    value_id = row.last_insert_id
+    if value_id == 0
+      value_id = db.query_one("select id from values where key_id = #{metric_id} and value = #{value} order by id desc limit 1", &.read(Int))
     end
-    io = IO::Memory.new
-    Process.run(command, shell: true, error: io)
-
-    result = io.to_s.split(",")
-
-    data = JSON.build do |json|
-      json.object do
-        json.field "request" do
-          json.object do
-            json.field "duration", (@init ? 0 : result[0].to_f)
-            json.field "total", (@init ? 0 : result[1].to_f)
-            json.field "per_second", (@init ? 0 : result[2].to_f)
-            json.field "bytes", (@init ? 0 : result[3].to_f)
-          end
-        end
-
-        json.field "error" do
-          json.object do
-            json.field "socket", (@init ? 0 : result[4].to_f)
-            json.field "read", (@init ? 0 : result[5].to_f)
-            json.field "write", (@init ? 0 : result[6].to_f)
-            json.field "http", (@init ? 0 : result[7].to_f)
-            json.field "timeout", (@init ? 0 : result[8].to_f)
-          end
-        end
-
-        json.field "latency" do
-          json.object do
-            json.field "minimum", (@init ? 0 : result[9].to_f)
-            json.field "maximum", (@init ? 0 : result[10].to_f)
-            json.field "average", (@init ? 0 : result[11].to_f)
-            json.field "deviation", (@init ? 0 : result[12].to_f)
-          end
-        end
-
-        json.field "percentile" do
-          json.object do
-            json.field "fifty", (@init ? 0 : result[13].to_f)
-            json.field "ninety", (@init ? 0 : result[14].to_f)
-            json.field "ninety_nine", (@init ? 0 : result[15].to_f)
-            json.field "ninety_nine_ninety", (@init ? 0 : result[16].to_f)
-          end
-        end
-      end
-    end
-
-    STDOUT.puts data
+    db.exec "insert into metrics (value_id, framework_id) values ($1,$2)", [value_id, framework_id]
   end
 end
 
-client = Client.new
-client.run
+class Client < Admiral::Command
+  define_flag threads : Int32, description: "# of threads", default: 16, long: "threads", short: "t"
+  define_flag connections : Int32, description: "# of opened connections", default: 1000, long: "connections", short: "c"
+  define_flag duration : Int32, description: "Time to test, in seconds", default: 15, long: "duration", short: "d"
+  define_flag language : String, description: "Language used", required: true, long: "language", short: "l"
+  define_flag framework : String, description: "Framework used", required: true, long: "framework", short: "f"
+  define_flag routes : Array(String), long: "routes", short: "r", default: ["GET:/"]
+
+  def run
+    db = DB.open("postgresql://postgres@localhost/benchmark")
+    row = db.exec "insert into languages (label) values ($1) on conflict do nothing", [flags.language]
+    language_id = row.last_insert_id
+    if language_id == 0
+      language_id = db.query_one("select id from languages where label = '#{flags.language}'", &.read(Int))
+    end
+
+    row = db.exec "insert into frameworks (language_id, label) values ($1, $2) on conflict do nothing", [language_id, flags.framework]
+    framework_id = row.last_insert_id
+    if framework_id == 0
+      framework_id = db.query_one("select id from frameworks where language_id = #{language_id} and label = '#{flags.framework}'", &.read(Int))
+    end
+
+    sleep 20 # due to external program usage
+    ip = File.read("ip.txt").strip
+
+    flags.routes.each do |route|
+      method, uri = route.split(":")
+      url = "http://#{ip}:3000#{uri}"
+
+      pipeline = PIPELINES[method]
+
+      command = "wrk -H 'Connection: keep-alive' --latency -d #{flags.duration}s -s #{pipeline} -c #{flags.connections} --timeout 8 -t #{flags.threads} #{url}"
+
+      io = IO::Memory.new
+      Process.run(command, shell: true, error: io)
+
+      result = io.to_s.split(",")
+
+      insert(db, framework_id, "request_duration", result[0])
+      insert(db, framework_id, "request_total", result[1])
+      insert(db, framework_id, "request_per_second", result[2])
+      insert(db, framework_id, "request_bytes", result[3])
+
+      insert(db, framework_id, "error_socket", result[4])
+      insert(db, framework_id, "error_read", result[5])
+      insert(db, framework_id, "error_write", result[6])
+      insert(db, framework_id, "error_http", result[7])
+      insert(db, framework_id, "error_timeout", result[8])
+
+      insert(db, framework_id, "latency_minimum", result[9])
+      insert(db, framework_id, "latency_maximum", result[10])
+      insert(db, framework_id, "latency_average", result[11])
+      insert(db, framework_id, "latency_deviation", result[12])
+
+      insert(db, framework_id, "percentile_fifty", result[13])
+      insert(db, framework_id, "percentile_ninety", result[14])
+      insert(db, framework_id, "percentile_ninety_nine", result[15])
+      insert(db, framework_id, "percentile_ninety_nine_ninety", result[16])
+
+      db.close
+    end
+  end
+end
+
+Client.run
