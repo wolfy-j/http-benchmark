@@ -11,9 +11,9 @@ ADD main.go go.mod ./
 RUN go get
 RUN go build -a -ldflags '-extldflags "-static"' -o /go/bin/app ./
 
-FROM alpine:3.10
+FROM alpine
 {{#environment}}
 ENV {{{.}}}
 {{/environment}}
-COPY --from=buildenv /go/bin/app /go/bin/app
+COPY --from=0 /go/bin/app /go/bin/app
 CMD /go/bin/app
