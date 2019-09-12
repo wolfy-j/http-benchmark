@@ -6,12 +6,14 @@ ENV GOARCH=amd64
 ENV GOPROXY=https://proxy.golang.org
 
 WORKDIR /go/src/app
-COPY . ./
-RUN rm -fr go.sum
+ADD main.go go.mod ./
 
 RUN go get
 RUN go build -a -ldflags '-extldflags "-static"' -o /go/bin/app ./
 
-FROM ubuntu
-COPY --from=0 /go/bin/app /usr/bin/app
-CMD /usr/bin/app
+FROM alpine:3.10
+{{#environment}}
+ENV {{{.}}}
+{{/environment}}
+COPY --from=buildenv /go/bin/app /go/bin/app
+CMD /go/bin/app
