@@ -13,4 +13,5 @@ license: MIT
 dependencies:
   lucky:
     github: luckyframework/lucky
-    version: ~> 0.16.0
+    #version: ~> 0.16.0
+    commit: 6f08454f87e0f6f25ab20453ced39811af9361f2

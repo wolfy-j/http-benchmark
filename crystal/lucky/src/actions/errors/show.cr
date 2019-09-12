@@ -1,4 +1,6 @@
 class Errors::Show < Lucky::ErrorAction
+  default_format :html
+
   def handle_error(error : JSON::ParseException)
     if json?
       json({error: "There was a problem parsing the JSON. Please check that it is formed correctly"}, status: 400)
