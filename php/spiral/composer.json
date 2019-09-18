@@ -6,7 +6,8 @@
     "spiral/nyholm-bridge": "*",
     "spiral/http": "*",
     "spiral/router": "*",
-    "spiral/roadrunner": "^1.4"
+    "spiral/roadrunner": "*",
+    "spiral/snapshots": "*"
   },
   "autoload": {
     "psr-4": {
