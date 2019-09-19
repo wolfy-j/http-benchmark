@@ -1,19 +1,10 @@
 <?php
-/**
- * Spiral Framework.
- *
- * @license   MIT
- * @author    Anton Titov (Wolfy-J)
- */
-declare(strict_types=1);
-
 namespace App\Bootloader;
 
-use App\Controller\BenchmarkController;
 use Spiral\Boot\Bootloader\Bootloader;
 use Spiral\Router\Route;
 use Spiral\Router\RouterInterface;
-use Spiral\Router\Target\Controller;
+use Spiral\Router\Target;
 
 class RoutesBootloader extends Bootloader
 {
@@ -22,13 +13,16 @@ class RoutesBootloader extends Bootloader
      */
     public function boot(RouterInterface $router)
     {
+        $route = new Route('/', new Target\Action(BenchmarkController::class, 'index'));
+
         $router->addRoute(
-            'benchmark',
-            new Route(
-                '/<action>[/<id>]',
-                new Controller(BenchmarkController::class),
-                ['action' => 'index']
-            )
+            'index',
+            $route->withVerbs('GET')
+        );
+
+        $router->addRoute(
+            'user',
+            new Route('/user[/<id>]', new Target\Action(BenchmarkController::class, 'user'))
         );
     }
 }
